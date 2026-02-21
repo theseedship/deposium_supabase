@@ -1,3 +1,5 @@
-FROM minio/minio:RELEASE.2025-07-23T15-54-02Z-cpuv1
+FROM minio/minio:RELEASE.2025-09-07T16-13-09Z
 
-ENTRYPOINT mkdir -p /data/$STORAGE_S3_BUCKET && exec minio server /data --console-address :9001
+RUN mkdir -p /data
+
+ENTRYPOINT mkdir -p /data/${STORAGE_S3_BUCKET:-deposium} && exec minio server /data --address ":9000" --console-address ":9001"
