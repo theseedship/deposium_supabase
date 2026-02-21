@@ -35,6 +35,7 @@ REALTIME_SECRET_KEY_BASE="fJBMmr6uIgQNXfy-QzJdAjTq02bSGCnx3zeTNNUCM5M"
 DB_HOST="db.railway.internal"
 DB_PORT="5432"
 DB_NAME="postgres"
+PGBOUNCER_HOST="pgbouncer.railway.internal"
 
 set_vars() {
   local service="$1"
@@ -106,14 +107,14 @@ set_vars "auth" \
   "PORT=9999"
 
 # ============================================================================
-# 3. rest (PostgREST)
+# 3. rest (PostgREST) — routed through pgbouncer for connection pooling
 # ============================================================================
 set_vars "rest" \
   "PGRST_SERVER_HOST=::" \
   "PGRST_SERVER_PORT=3000" \
   "PGRST_ADMIN_SERVER_HOST=::" \
   "PGRST_ADMIN_SERVER_PORT=3001" \
-  "PGRST_DB_URI=postgres://authenticator:${DB_AUTHENTICATOR_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" \
+  "PGRST_DB_URI=postgres://authenticator:${DB_AUTHENTICATOR_PASSWORD}@${PGBOUNCER_HOST}:${DB_PORT}/${DB_NAME}" \
   "PGRST_DB_SCHEMAS=public,storage,graphql_public" \
   "PGRST_DB_ANON_ROLE=anon" \
   "PGRST_JWT_SECRET=$JWT_SECRET" \
@@ -207,9 +208,7 @@ set_vars "studio" \
   "DEFAULT_PROJECT_NAME=Deposium" \
   "LOGFLARE_PUBLIC_ACCESS_TOKEN=$LOGFLARE_PUBLIC_TOKEN" \
   "LOGFLARE_PRIVATE_ACCESS_TOKEN=$LOGFLARE_PRIVATE_TOKEN" \
-  "LOGFLARE_URL=http://analytics.railway.internal:4000" \
-  "NEXT_PUBLIC_ENABLE_LOGS=true" \
-  "NEXT_ANALYTICS_BACKEND_PROVIDER=postgres"
+  "NEXT_PUBLIC_ENABLE_LOGS=false"
 
 # ============================================================================
 # 7. meta (PGMeta)
@@ -249,43 +248,18 @@ set_vars "minio" \
   "PORT=9000" \
   "MINIO_ROOT_USER=$S3_ID" \
   "MINIO_ROOT_PASSWORD=$S3_SECRET" \
-  "STORAGE_S3_BUCKET=default-bucket"
+  "MINIO_CONCURRENCY_MAX=50" \
+  "MINIO_COMPRESSION=on" \
+  "MINIO_API_REQUESTS_MAX=200" \
+  "STORAGE_S3_BUCKET=deposium"
 
 # ============================================================================
-# 10. analytics (Logflare)
+# (REMOVED) analytics (Logflare) — incompatible Railway: useless without Vector, 200MB RAM wasted
+# (REMOVED) vector — incompatible Railway: needs /var/run/docker.sock
 # ============================================================================
-set_vars "analytics" \
-  "PORT=4000" \
-  "LOGFLARE_NODE_HOST=::" \
-  "DB_USERNAME=supabase_admin" \
-  "DB_DATABASE=_supabase" \
-  "DB_HOSTNAME=$DB_HOST" \
-  "DB_PORT=$DB_PORT" \
-  "DB_PASSWORD=$DB_SUPERUSER_PASSWORD" \
-  "DB_SCHEMA=_analytics" \
-  "LOGFLARE_PUBLIC_ACCESS_TOKEN=$LOGFLARE_PUBLIC_TOKEN" \
-  "LOGFLARE_PRIVATE_ACCESS_TOKEN=$LOGFLARE_PRIVATE_TOKEN" \
-  "LOGFLARE_SINGLE_TENANT=true" \
-  "LOGFLARE_SUPABASE_MODE=true" \
-  "POSTGRES_BACKEND_URL=postgresql://supabase_admin:${DB_SUPERUSER_PASSWORD}@${DB_HOST}:${DB_PORT}/_supabase" \
-  "POSTGRES_BACKEND_SCHEMA=_analytics" \
-  "LOGFLARE_FEATURE_FLAG_OVERRIDE=multibackend=true"
 
 # ============================================================================
-# 11. vector
-# ============================================================================
-set_vars "vector" \
-  "PORT=9001" \
-  "VECTOR_LISTEN=[::]:9001" \
-  "VECTOR_PORT=9001" \
-  "ANALYTICS_HOST=analytics.railway.internal" \
-  "ANALYTICS_PORT=4000" \
-  "KONG_HOST=kong.railway.internal" \
-  "KONG_PORT=8000" \
-  "LOGFLARE_PUBLIC_ACCESS_TOKEN=$LOGFLARE_PUBLIC_TOKEN"
-
-# ============================================================================
-# 12. storage (Storage API — disabled initially but vars ready)
+# 10. storage (Storage API) — uses pgbouncer via DATABASE_POOL_URL
 # ============================================================================
 set_vars "storage" \
   "PORT=5000" \
@@ -297,7 +271,7 @@ set_vars "storage" \
   "AUTH_JWT_SECRET=$JWT_SECRET" \
   "AUTH_JWT_ALGORITHM=HS256" \
   "DATABASE_URL=postgres://supabase_storage_admin:${DB_STORAGE_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" \
-  "DATABASE_POOL_URL=postgres://supabase_storage_admin:${DB_STORAGE_PASSWORD}@pgbouncer.railway.internal:5432/${DB_NAME}" \
+  "DATABASE_POOL_URL=postgres://supabase_storage_admin:${DB_STORAGE_PASSWORD}@${PGBOUNCER_HOST}:${DB_PORT}/${DB_NAME}" \
   "DATABASE_CONNECTION_TIMEOUT=3000" \
   "DB_INSTALL_ROLES=false" \
   "DB_ALLOW_MIGRATION_REFRESH=false" \
@@ -310,7 +284,7 @@ set_vars "storage" \
   "STORAGE_S3_FORCE_PATH_STYLE=true" \
   "STORAGE_S3_MAX_SOCKETS=200" \
   "STORAGE_S3_REGION=default-region" \
-  "STORAGE_S3_BUCKET=default-bucket" \
+  "STORAGE_S3_BUCKET=deposium" \
   "TENANT_ID=default-tenant" \
   "AWS_ACCESS_KEY_ID=$S3_ID" \
   "AWS_SECRET_ACCESS_KEY=$S3_SECRET" \
@@ -322,7 +296,7 @@ set_vars "storage" \
   "PGRST_JWT_SECRET=$JWT_SECRET"
 
 # ============================================================================
-# 13. imgproxy
+# 11. imgproxy
 # ============================================================================
 set_vars "imgproxy" \
   "PORT=5001" \
@@ -341,8 +315,14 @@ echo "=== DONE ==="
 echo "All variables set for v2_deposium."
 echo ""
 echo "Next steps:"
-echo "1. Add a volume to 'db' service: mount /var/lib/postgresql/data"
-echo "2. Redeploy 'db' first, wait for healthy"
-echo "3. Then redeploy auth, rest, realtime, pgbouncer"
-echo "4. Then redeploy kong, studio, meta, minio"
-echo "5. Then redeploy analytics, vector, storage, imgproxy"
+echo "1. Add volumes: db → /var/lib/postgresql/data, minio → /data"
+echo "2. Redeploy db first, wait for SUCCESS"
+echo "3. Redeploy auth, rest, realtime, pgbouncer, minio"
+echo "4. Redeploy kong, studio, meta"
+echo "5. Redeploy storage, imgproxy"
+echo ""
+echo "PgBouncer routing:"
+echo "  - rest (PostgREST) → pgbouncer.railway.internal (pooled)"
+echo "  - storage           → pgbouncer via DATABASE_POOL_URL (pooled)"
+echo "  - auth, realtime    → db.railway.internal (direct — prepared stmts / CDC)"
+echo "  - meta              → db.railway.internal (direct — admin catalog queries)"
