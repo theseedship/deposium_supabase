@@ -101,13 +101,14 @@ CREATE INDEX IF NOT EXISTS idx_space_members_space_role ON app.space_members USI
 -- 5. Insert System Space
 -- ============================================================================
 
+-- Use a deterministic system UUID as owner (no auth.users exist during init)
 INSERT INTO app.shared_spaces (id, name, description, is_active, owner_id, settings)
 SELECT
   '00000000-0000-0000-0000-000000000001'::uuid,
   'System Orchestration',
   'Internal system space for automated code execution',
   true,
-  (SELECT id FROM auth.users LIMIT 1), -- Use first user as owner
+  '00000000-0000-0000-0000-000000000000'::uuid, -- System owner placeholder
   '{"is_system_space": true, "require_approval": false, "auto_cleanup": true}'::jsonb
 WHERE NOT EXISTS (
   SELECT 1 FROM app.shared_spaces WHERE id = '00000000-0000-0000-0000-000000000001'
