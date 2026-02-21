@@ -263,6 +263,47 @@ services:
       #      - ::1
       #    deny: []
 
+  ###
+  ### Deposium-specific routes
+  ###
+
+  ## Deposium Edge Runtime (custom — 15 Mastra agents, MCP mesh, Groq layer)
+  ## Repo: theseedship/deposium_edge_runtime (NOT the standard Supabase edge-runtime)
+  - name: deposium-edge-runtime
+    _comment: 'Edge Runtime: /edge/v1/* -> http://edge-runtime:9000/*'
+    url: http://$DEPOSIUM_EDGE_HOST:$DEPOSIUM_EDGE_PORT/
+    routes:
+      - name: deposium-edge-all
+        strip_path: true
+        paths:
+          - /edge/v1/
+    plugins:
+      - name: cors
+
+  ## Deposium MCPs (125+ tools — DuckDB, search, aggregation, ingestion)
+  - name: deposium-mcps
+    _comment: 'MCPs: /mcps/v1/* -> http://mcps:4000/*'
+    url: http://$DEPOSIUM_MCPS_HOST:$DEPOSIUM_MCPS_PORT/
+    routes:
+      - name: deposium-mcps-all
+        strip_path: true
+        paths:
+          - /mcps/v1/
+    plugins:
+      - name: cors
+
+  ## N8N Automation (workflow engine)
+  - name: deposium-n8n
+    _comment: 'N8N: /n8n/* -> http://n8n:5678/*'
+    url: http://$DEPOSIUM_N8N_HOST:$DEPOSIUM_N8N_PORT/
+    routes:
+      - name: deposium-n8n-all
+        strip_path: true
+        paths:
+          - /n8n/
+    plugins:
+      - name: cors
+
   ## Protected Dashboard - catch all remaining routes
   - name: dashboard
     _comment: 'Studio: /* -> http://studio:3000/*'
